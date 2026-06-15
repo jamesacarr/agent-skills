@@ -91,8 +91,8 @@ skill-name/
 
 | Location | Use When |
 |----------|----------|
-| `~/.pi/agent/skills/` or `~/.agents/skills/` (global) | Reusable across projects, personal preference |
-| `.pi/skills/` or `.agents/skills/` (project) | Project-specific, committed to version control |
+| Global skills directory: `~/.agents/skills/` (or harness-specific, e.g. `~/.claude/skills/`, `~/.pi/agent/skills/`) | Reusable across projects, personal preference |
+| Project skills directory: `.agents/skills/` (or harness-specific, e.g. `.claude/skills/`, `.pi/skills/`) | Project-specific, committed to version control |
 | Settings `skills` array | Custom locations |
 
 Global and project skills with the same name: first found wins (warns on collision).
