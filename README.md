@@ -27,6 +27,7 @@ Current skills:
 | `use-glab` | GitLab merge requests and comments via `glab` |
 | `use-jira` | Jira issues, epics, sprints, and boards via `jira` |
 | `use-obsidian` | Obsidian vault operations via the native `obsidian` CLI |
+| `write-tickets` | Consistently structured, ready-for-development tickets (Stories, Bugs, Spikes) for any tracker |
 
 ## Installing a skill
 
