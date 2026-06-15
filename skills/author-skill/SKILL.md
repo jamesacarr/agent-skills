@@ -1,7 +1,7 @@
 ---
 name: author-skill
 description: Creates, edits, audits, and upgrades Agent Skills (agentskills.io). Use when working with SKILL.md files or skill directories.
-compatibility: Requires Pi agent harness with read, write, edit, and bash tools
+compatibility: Requires an agent harness with read, write, edit, and bash tools
 ---
 
 # author-skill
@@ -21,8 +21,8 @@ Resolve `{skills-dir}` before proceeding. Check cwd for project skill directorie
 
 | Check | `{skills-dir}` |
 |-------|-----------------|
-| `.pi/skills/` or `.agents/skills/` exists in cwd or ancestor dirs | That project directory |
-| Otherwise | `~/.pi/agent/skills/` or `~/.agents/skills/` |
+| A project skills directory exists in cwd or ancestor dirs (`.agents/skills/`, or harness-specific e.g. `.claude/skills/`, `.pi/skills/`) | That project directory |
+| Otherwise | The global skills directory (`~/.agents/skills/`, or harness-specific e.g. `~/.claude/skills/`, `~/.pi/agent/skills/`) |
 
 Announce resolved context (global vs project, resolved path) before proceeding.
 
