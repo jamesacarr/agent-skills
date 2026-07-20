@@ -11,8 +11,9 @@ compatibility: Requires glab CLI (brew install glab) and GitLab authentication
 - **Always squash commits** via `--squash-before-merge` on create or `--squash` on merge
 - **Always delete source branch** via `--remove-source-branch` on create or `-d` on merge
 - **Use MR templates** when `.gitlab/merge_request_templates/` exists in the repo
-- **Inline comments require `glab api`** — `glab mr note` only posts top-level comments
+- **Inline comments and thread replies require `glab api`** — `glab mr note` only posts standalone top-level comments; it cannot reply to a discussion
 - **API path placeholder:** Use `:fullpath` (not `:id`) for project reference in `glab api` calls
+- **`--input` needs an explicit `-H "Content-Type: application/json"`** — without it the API returns 415
 
 ## Prerequisites
 
@@ -36,7 +37,7 @@ If not authenticated: `glab auth login`.
 glab mr create --title "[PROJ-123] Feature title" --squash-before-merge --remove-source-branch --push
 glab mr merge <ID> --squash --remove-source-branch --yes  # use --yes only after user confirms
 glab mr note <ID> -m "Comment"                             # top-level comment
-glab api "projects/:fullpath/merge_requests/<IID>/discussions" --method POST --input comment.json  # inline comment
+glab api "projects/:fullpath/merge_requests/<IID>/discussions" --method POST -H "Content-Type: application/json" --input comment.json  # inline comment
 ```
 
 ## MR Creation
@@ -73,6 +74,15 @@ glab mr create \
 | `--assignee` | Assign to user(s) by username (comma-separated) |
 
 **Do NOT use `--related-issue` with Jira ticket IDs** — it expects GitLab issue numbers.
+
+**If creation fails with `403 {error: insufficient_scope}`:** the token cannot create MRs (read-scoped or AI-workflow token). Prefer fixing auth — ask the user to re-run `glab auth login` with an `api`-scope token. To proceed without it, create the MR through git push options, then set remaining fields with `glab mr update`:
+
+```bash
+git push -o merge_request.create \
+  -o merge_request.target=<target-branch> \
+  -o merge_request.title="[PROJ-123] Feature title" \
+  origin <branch>
+```
 
 ## MR View and Merge
 
@@ -145,6 +155,23 @@ glab api "projects/:fullpath/merge_requests/<MR_IID>/discussions" \
 ```
 
 **If post fails:** Verify line number exists in file at HEAD_SHA, or SHAs are current after rebase. Re-fetch `diff_refs` and retry if stale.
+
+### Reply to an Existing Discussion (Threaded)
+
+Replies to review threads (including automated-review findings) must target the discussion — `glab mr note` would post a disconnected top-level comment. A note URL fragment like `#note_123456` gives the note ID; find its discussion first:
+
+```bash
+glab api "projects/:fullpath/merge_requests/<MR_IID>/discussions" \
+  | jq -r '.[] | select(.notes[].id == <NOTE_ID>) | .id'
+```
+
+Then post the reply into that discussion (`--field "body=@file"` reads a multi-line body from a file):
+
+```bash
+glab api "projects/:fullpath/merge_requests/<MR_IID>/discussions/<DISCUSSION_ID>/notes" \
+  --method POST \
+  --field "body=@reply.md"
+```
 
 ## Other Operations
 

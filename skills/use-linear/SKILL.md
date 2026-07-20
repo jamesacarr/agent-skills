@@ -108,6 +108,14 @@ linear issue update ENG-123 -p 1 --milestone "Beta"
 
 Takes the same field flags as `create` (`-t`, `-s`, `-p`, `-a`, `-l`, `--project`, `--milestone`, `--cycle`, `--parent`, `--estimate`, `--due-date`). Omit the ID to update the current-branch issue.
 
+Workflow state names are team-specific — a team may have no `In Review`, or use `Won't Do` instead of `Canceled`. If a state name is rejected (`Workflow state not found`), list the team's states instead of guessing:
+
+```bash
+linear api <<'GRAPHQL'
+query { teams(filter: { key: { eq: "ENG" } }) { nodes { states { nodes { name type } } } } }
+GRAPHQL
+```
+
 ### List (your issues)
 
 ```bash
