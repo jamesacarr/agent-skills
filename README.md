@@ -19,6 +19,7 @@ Current skills:
 | `debug-code` | Disciplined debugging with feedback loops, root-cause investigation, and regression tests |
 | `obsidian-markdown` | Obsidian-flavoured Markdown syntax: wikilinks, embeds, callouts, properties, tags |
 | `obsidian-wiki` | Personal Obsidian wiki workflows: ingest, query, and lint |
+| `plan-ticket` | Implementation plans for tickets: persisted plan.md, MR-stack design, risk-sized scoped-critic review loop |
 | `test` | Test quality guidance: behavioural assertions, minimal mocking, descriptive naming |
 | `test-driven-development` | RED-GREEN-REFACTOR process discipline |
 | `upgrade-dependencies` | Safe, atomic JavaScript dependency upgrades |
@@ -61,7 +62,7 @@ These skills are written to avoid depending on a single harness where possible.
 A few skills are intentionally personal:
 
 - `obsidian-wiki` assumes an Obsidian vault named `wiki` and conventions that match James Carr's personal knowledge base.
-- Workflow skills such as `debug-code`, `test`, and `test-driven-development` encode strong preferences about engineering process.
+- Workflow skills such as `debug-code`, `test`, `test-driven-development`, and `plan-ticket` encode strong preferences about engineering process (`plan-ticket` includes a default ~300-production-line MR size cap).
 - CLI skills may assume authenticated local CLIs and non-interactive usage.
 
 Fork or copy these skills before changing assumptions that are specific to your environment.
