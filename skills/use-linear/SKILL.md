@@ -15,7 +15,7 @@ compatibility: Requires linear-cli (schpet/linear-cli) v2+ via brew/deno/npm
 - **`list`/`mine` vs `query`.** `issue list` (alias `mine`) shows *your* issues and defaults to `unstarted` state. `issue query` is structured search across teams with `--json`; use it for anything beyond your own active work.
 - **`--json` for scripting.** Use it on `issue view` and `issue query` when parsing or piping results.
 - **`linear api` is the escape hatch.** Anything the typed commands don't cover, do via raw GraphQL.
-- **`--help` is the source of truth.** The flag tables cover the v2.0.0 surface for one-shot use; if a flag is rejected or a subcommand is missing, run `linear <cmd> --help`.
+- **`--help` is the source of truth.** The flag tables cover the v2.3.0 surface for one-shot use; if a flag is rejected or a subcommand is missing, run `linear <cmd> --help`.
 - **Confirm before mutations** (create, update, delete, relation, PR). Don't mutate without user approval.
 
 ## Prerequisites
@@ -79,11 +79,12 @@ linear issue create \
 | `-s, --state <name\|type>` | Initial workflow state |
 | `--project <name>` | Project name or slug ID |
 | `--milestone <name>` | Project milestone |
-| `--cycle <name\|number\|active>` | Cycle |
+| `--cycle <ref>` | Cycle: name, number, `active`/`now`, `next`, `previous`, or relative offset (`--cycle=+1`, `--cycle=-1`) |
 | `--parent <ID>` | Parent issue (e.g. `ENG-100`) |
 | `--estimate <n>` | Points estimate |
 | `--due-date <date>` | Due date |
 | `--start` | Start the issue immediately after creation |
+| `--no-use-default-template` | Skip the team's default issue template |
 | `--no-interactive` | Fail instead of prompting for missing fields |
 
 ### View
@@ -96,7 +97,7 @@ linear issue view --web                     # open current-branch issue in brows
 linear issue view -a                        # open in Linear.app (desktop)
 ```
 
-`--show-resolved-threads` includes resolved comment threads in the output.
+`--show-resolved-threads` includes resolved comment threads. `view` downloads referenced files locally by default; `--no-download` keeps the remote URLs instead.
 
 ### Update
 
@@ -104,16 +105,18 @@ linear issue view -a                        # open in Linear.app (desktop)
 linear issue update ENG-123 -s "In Review" -a self
 linear issue update ENG-123 --description-file "$TMPDIR/desc.md"
 linear issue update ENG-123 -p 1 --milestone "Beta"
+linear issue update ENG-123 --unassign           # clear the assignee
+linear issue update ENG-123 --cycle next          # move to the next cycle
+linear issue update ENG-123 --clear-cycle         # remove from its cycle
 ```
 
-Takes the same field flags as `create` (`-t`, `-s`, `-p`, `-a`, `-l`, `--project`, `--milestone`, `--cycle`, `--parent`, `--estimate`, `--due-date`). Omit the ID to update the current-branch issue.
+Takes the same field flags as `create` (`-t`, `-s`, `-p`, `-a`, `-l`, `--project`, `--milestone`, `--cycle`, `--parent`, `--estimate`, `--due-date`), plus `--unassign` (clear assignee; can't combine with `-a`) and `--clear-cycle` (remove from cycle). Omit the ID to update the current-branch issue.
 
-Workflow state names are team-specific — a team may have no `In Review`, or use `Won't Do` instead of `Canceled`. If a state name is rejected (`Workflow state not found`), list the team's states instead of guessing:
+Workflow state names are team-specific — a team may have no `In Review`, or use `Won't Do` instead of `Canceled`. A rejected `--state` errors with the team's valid states listed; to check them up front, list the team's states instead of guessing:
 
 ```bash
-linear api <<'GRAPHQL'
-query { teams(filter: { key: { eq: "ENG" } }) { nodes { states { nodes { name type } } } } }
-GRAPHQL
+linear team states ENG          # omit the key to use the configured default team
+linear team states ENG --json   # structured, for scripting
 ```
 
 ### List (your issues)
@@ -130,9 +133,10 @@ linear issue list --label bug --sort priority
 | `-s, --state <state>` | `triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled` (repeatable) |
 | `--all-states` | All states |
 | `--team <key>` | Team override |
-| `--project` / `--milestone` / `--cycle` | Scope filters (`--milestone` requires `--project`) |
+| `--project` / `--milestone` / `--cycle` | Scope filters (`--milestone` requires `--project`; `--cycle` accepts `now`/`next`/`previous`/`+1`/`-1`) |
+| `--project-label <name>` | Filter by project label (across all projects with it) |
 | `-l, --label <name>` | Label (repeatable) |
-| `--sort <manual\|priority>` | Sort order (or set `LINEAR_ISSUE_SORT`) |
+| `--sort <manual\|priority>` | Sort order (default `priority`; or set `LINEAR_ISSUE_SORT`) |
 | `--limit <n>` | Max results (default 50, `0` = unlimited) |
 | `--created-after` / `--updated-after <date>` | Date filters (ISO 8601 or `YYYY-MM-DD`) |
 
@@ -144,7 +148,7 @@ linear issue query --team ENG -s started --assignee alice
 linear issue query --unassigned -s backlog --limit 0
 ```
 
-Like `list` plus: `--search <term>` (full-text; add `--search-comments` to include comments), `--all-teams`, `--assignee <username>`, `-U/--unassigned`, `--include-archived`, `-j/--json`. `--sort` is unavailable with `--search`.
+Like `list` (including `--project-label` and relative `--cycle` refs) plus: `--search <term>` (full-text; add `--search-comments` to include comments), `--all-teams`, `--assignee <username>`, `-U/--unassigned`, `--include-archived`, `-j/--json`. `--sort` is unavailable with `--search`.
 
 ### Start work
 
@@ -167,7 +171,7 @@ linear issue comment update <COMMENT_ID> --body-file edit.md
 linear issue comment delete <COMMENT_ID>
 ```
 
-`-a/--attach <path>` attaches files (repeatable).
+`-a/--attach <path>` uploads a file and adds its Markdown link to the comment (repeatable); images added this way render inline. Uploads are private (workspace members only) by default — add `--public` for an unauthenticated URL. To render an image inline, attach it on a comment rather than via `issue attach` (which only creates a sidebar link).
 
 ### Relations (dependencies)
 
@@ -200,15 +204,19 @@ linear issue pr -t "Custom title" --web
 | Print issue title | `linear issue title [ID]` |
 | Print issue URL | `linear issue url [ID]` |
 | Commit trailer for the issue | `linear issue describe [ID]` (`-r` for `References` instead of `Fixes`) |
-| Attach a file | `linear issue attach ENG-123 ./diagram.png` |
+| Attach a file (sidebar link) | `linear issue attach ENG-123 ./diagram.png` (images don't render inline — use `comment add --attach` for that; `--public` for an unauthenticated URL) |
 | Link a URL | `linear issue link ENG-123 https://...` |
+| List agent sessions | `linear issue agent-session list [ID]` (`view <sessionId>` for detail) |
+| Show issue commits (jj only) | `linear issue commits [ID]` |
 | Delete an issue | `linear issue delete ENG-123` |
 
 ## Teams, Projects, Milestones
 
 ```bash
 linear team list
-linear team members [TEAM_KEY]
+linear team members [TEAM_KEY]                   # add --all for inactive, --json to script
+linear team states [TEAM_KEY]                    # workflow states (--json)
+linear user list                                 # workspace members (--all, --json)
 linear project list
 linear project view <PROJECT_ID>
 linear milestone list --project <PROJECT_ID>     # alias: linear m
