@@ -97,7 +97,7 @@ This is the user's review checkpoint. Implementation starts only after they resp
 | Skill | Boundary |
 |-------|----------|
 | write-tickets | Authoring the ticket itself. plan-ticket consumes a ticket; it does not write one. |
-| use-linear / use-jira / use-gh | Fetching ticket details and updating ticket status. |
+| use-jira / use-gh | Fetching ticket details and updating ticket status. |
 | debug-code | For fix tickets, the evidence-gathering discipline behind the Evidence Chain section. |
 | test-driven-development | The implementation process the plan's per-task test requirements feed into. |
 
