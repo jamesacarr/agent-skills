@@ -9,7 +9,7 @@ description: Merges a ticket's open MR/PR(s) once CI is green and every review c
 
 - Both modes run this same skill. Local mode executes the workflow in this session; remote mode sends `/merge-ticket` to the ticket's agent, which invokes the skill there in local mode - so the guardrails reach whichever session executes.
 - The executing session needs context this skill doesn't carry: which MR(s), which worktree, which ticket. A ticket's implement-ticket agent has all three, which is why remote mode targets it by name. In local mode, discover them from the current branch and conversation, and ask rather than guess when ambiguous.
-- Merging is irreversible and the workflow ends by closing the ticket, so "all issues fixed or answered" is a hard gate. Never merge past an unaddressed review comment.
+- Merging is irreversible and the workflow ends by closing the ticket, so "all issues fixed or answered" is a hard gate. Never merge past an unaddressed review comment. Every push (fixes or a rebase) stales all earlier reads of CI and comments - "return to step 1" means re-reading both, not resuming from memory.
 
 ## Parameters
 
@@ -37,7 +37,7 @@ For each open MR, in stack order (earliest first):
 
 1. Wait for CI to finish
 2. If red, fix the issues, push, and return to step 1
-3. If green, read all comments on the MR. If the project posts automated reviews, wait for that review to land rather than merging past one that arrives moments later
+3. If green, read all comments on the MR as of the latest push. If the project posts automated reviews, they re-run on each push and may edit their earlier comment in place - wait for the current one to land rather than merging past it
 4. Fix, or comment your reasoning for not fixing, each issue that was raised
 5. If fixes were made, push and return to step 1
 6. When all raised issues are fixed or answered, merge the MR and retarget the next MR in the stack. A merge rejected for conflicts means the branch went stale - rebase, push, and return to step 1
