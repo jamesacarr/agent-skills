@@ -239,8 +239,10 @@ jira epic remove ISSUE-1 ISSUE-2
 
 ### View Epic
 
+There is no `jira epic view`; an epic is an issue:
+
 ```bash
-jira epic view EPIC-KEY
+jira issue view EPIC-KEY
 ```
 
 ## Board & Sprint
