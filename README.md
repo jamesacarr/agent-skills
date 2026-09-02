@@ -24,6 +24,7 @@ Current skills:
 | `test-driven-development` | RED-GREEN-REFACTOR process discipline |
 | `upgrade-dependencies` | Safe, atomic JavaScript dependency upgrades |
 | `use-defuddle` | Clean web-content extraction with the `defuddle` CLI |
+| `use-gcx` | Grafana and Grafana Cloud resources, queries, and alerting via `gcx` |
 | `use-gh` | GitHub PRs, issues, comments, reviews, and CI via `gh` |
 | `use-glab` | GitLab merge requests and comments via `glab` |
 | `use-jira` | Jira issues, epics, sprints, and boards via `jira` |
