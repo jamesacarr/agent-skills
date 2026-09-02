@@ -11,7 +11,7 @@ compatibility: Requires glab CLI (brew install glab) and GitLab authentication
 - **Always squash commits** via `--squash-before-merge` on create or `--squash` on merge
 - **Always delete source branch** via `--remove-source-branch` on create or `-d` on merge
 - **Use MR templates** when `.gitlab/merge_request_templates/` exists in the repo
-- **Inline comments and thread replies require `glab api`** — `glab mr note` only posts standalone top-level comments; it cannot reply to a discussion
+- **Comments go through `glab mr note` subcommands** (`create`, `list`, `resolve`, `update`; glab 1.116+). `create --reply` threads a reply and `create --file --line` places an inline diff comment, so the position-JSON dance via `glab api` is only a fallback. GitLab marks these subcommands experimental - if a flag is missing on the installed version, use the `glab api` fallback shown under Comments
 - **API path placeholder:** Use `:fullpath` (not `:id`) for project reference in `glab api` calls
 - **`--input` needs an explicit `-H "Content-Type: application/json"`** — without it the API returns 415
 
@@ -36,8 +36,9 @@ If not authenticated: `glab auth login`.
 ```bash
 glab mr create --title "[PROJ-123] Feature title" --squash-before-merge --remove-source-branch --push
 glab mr merge <ID> --squash --remove-source-branch --yes  # use --yes only after user confirms
-glab mr note <ID> -m "Comment"                             # top-level comment
-glab api "projects/:fullpath/merge_requests/<IID>/discussions" --method POST -H "Content-Type: application/json" --input comment.json  # inline comment
+glab mr note create <ID> -m "Comment"                     # top-level comment (new thread)
+glab mr note create <ID> --file src/file.ts --line 42 -m "Comment"   # inline diff comment
+glab mr note create <ID> --reply <DISCUSSION_ID> -m "Reply"  # reply in an existing thread
 ```
 
 ## MR Creation
@@ -108,70 +109,59 @@ glab mr merge <ID> --squash --remove-source-branch --squash-message "<MR title>"
 ### Top-Level Comment
 
 ```bash
-glab mr note <ID> -m "Comment text"
+glab mr note create <ID> -m "Comment text"
+glab mr note create <ID> < comment.md                 # multi-line body from a file or stdin
+glab mr note create <ID> --resolvable=false -m "CI passed"   # status note that never blocks "all threads resolved"
 ```
+
+`create` starts a resolvable discussion thread by default; use `--resolvable=false` for automation or status updates nobody needs to resolve.
 
 ### Inline Comment (File + Line)
 
-Inline comments require the GitLab Discussions API via `glab api`.
-
-**Step 1 — Get diff refs:**
-
 ```bash
-glab mr view <ID> -F json
+glab mr note create <ID> --file src/file.ts --line 42 -m "Comment text"
+glab mr note create <ID> --file src/file.ts --line 10:15 -m "Range comment"
+glab mr note create <ID> --file src/file.ts --old-line 42 -m "On a removed line"
+glab mr note create <ID> --file src/file.ts -m "File-level comment"
 ```
 
-Extract `diff_refs.base_sha`, `diff_refs.start_sha`, `diff_refs.head_sha` from the JSON output.
-
-**Step 2 — Write comment JSON to temp file:**
-
-```json
-{
-  "body": "Comment text here",
-  "position": {
-    "base_sha": "<BASE_SHA>",
-    "start_sha": "<START_SHA>",
-    "head_sha": "<HEAD_SHA>",
-    "position_type": "text",
-    "new_path": "src/file.ts",
-    "new_line": 42
-  }
-}
-```
-
-| Position field | When to use |
-|----------------|-------------|
-| `new_path` + `new_line` | Added or changed lines |
-| `old_path` + `old_line` | Deleted lines (omit `new_path`/`new_line`) |
-| Both `old_path` + `new_path` | Renamed files |
-
-**Step 3 — Post via API:**
-
-```bash
-glab api "projects/:fullpath/merge_requests/<MR_IID>/discussions" \
-  --method POST \
-  -H "Content-Type: application/json" \
-  --input /tmp/glab-comment.json
-```
-
-**If post fails:** Verify line number exists in file at HEAD_SHA, or SHAs are current after rebase. Re-fetch `diff_refs` and retry if stale.
+Targets the latest diff version, so no SHA bookkeeping. `--line` and `--old-line` need `--file` and exclude each other.
 
 ### Reply to an Existing Discussion (Threaded)
 
-Replies to review threads (including automated-review findings) must target the discussion — `glab mr note` would post a disconnected top-level comment. A note URL fragment like `#note_123456` gives the note ID; find its discussion first:
+Replies must target the discussion, or they land as a disconnected top-level comment. A note URL fragment like `#note_123456` gives a note ID, not a discussion ID; map it first:
 
 ```bash
-glab api "projects/:fullpath/merge_requests/<MR_IID>/discussions" \
-  | jq -r '.[] | select(.notes[].id == <NOTE_ID>) | .id'
+glab mr note list <ID> -F json --jq '.[] | select(.notes[].id == <NOTE_ID>) | .id'
+glab mr note create <ID> --reply <DISCUSSION_ID> -m "Reply text"
 ```
 
-Then post the reply into that discussion (`--field "body=@file"` reads a multi-line body from a file):
+`--reply` accepts the full discussion ID or a unique prefix of 8+ characters, which is what `glab mr note list` prints in text mode.
+
+### Resolve, List, Update
 
 ```bash
-glab api "projects/:fullpath/merge_requests/<MR_IID>/discussions/<DISCUSSION_ID>/notes" \
-  --method POST \
-  --field "body=@reply.md"
+glab mr note list <ID> --state unresolved             # open threads; --type diff for inline only
+glab mr note resolve <NOTE_ID_OR_DISCUSSION_ID> <ID>  # a note ID resolves its parent discussion
+glab mr note update <ID> <NOTE_ID> -m "New body"
 ```
+
+### Fallback: `glab api`
+
+Use only when the installed glab lacks a `note` flag. Inline comments need `diff_refs` from `glab mr view <ID> -F json` (`base_sha`, `start_sha`, `head_sha`) in a position object:
+
+```json
+{"body": "Comment", "position": {"base_sha": "<BASE>", "start_sha": "<START>", "head_sha": "<HEAD>", "position_type": "text", "new_path": "src/file.ts", "new_line": 42}}
+```
+
+Use `old_path` + `old_line` for deleted lines, both paths for renames. Post it, or a thread reply, with:
+
+```bash
+glab api "projects/:fullpath/merge_requests/<IID>/discussions" --method POST -H "Content-Type: application/json" --input /tmp/glab-comment.json
+glab api "projects/:fullpath/merge_requests/<IID>/discussions/<DISCUSSION_ID>/notes" --method POST --field "body=@reply.md"
+```
+
+If the post fails, re-fetch `diff_refs` - SHAs go stale after a rebase.
 
 ## Other Operations
 
@@ -192,5 +182,5 @@ glab api "projects/:fullpath/merge_requests/<MR_IID>/discussions/<DISCUSSION_ID>
 
 - Squash and delete-source-branch set on every MR create and merge
 - MR templates used when available in the repo
-- Inline comments posted via `glab api` with correct position data
+- Inline comments and thread replies posted via `glab mr note create` (`--file`/`--line`, `--reply`); `glab api` only when a flag is missing
 - User confirmed before any mutation (create, merge, comment) — only pass `--yes` after explicit user approval
