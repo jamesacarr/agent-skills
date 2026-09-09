@@ -7,25 +7,36 @@ description: Merges a ticket's open MR/PR(s) once CI is green and every review c
 
 ## Essential Principles
 
-- Both modes run this same skill. Local mode executes the workflow in this session; remote mode sends `/merge-ticket` to the ticket's agent, which invokes the skill there in local mode - so the guardrails reach whichever session executes.
-- The executing session needs context this skill doesn't carry: which MR(s), which worktree, which ticket. A ticket's implement-ticket agent has all three, which is why remote mode targets it by name. In local mode, discover them from the current branch and conversation, and ask rather than guess when ambiguous.
+- Both modes run this same skill. Local mode executes the workflow in this session; remote mode hands the ticket's agent a prompt naming this skill, and that session recognises itself as the ticket's agent and self-selects local mode - so the guardrails reach whichever session executes.
+- The executing session needs context this skill doesn't carry: which MR(s), which worktree, which ticket. A ticket's implement-ticket agent has all three, which is why remote mode targets it by name and never spawns a replacement. In local mode, discover them from the current branch and conversation, and ask rather than guess when ambiguous.
 - Merging is irreversible and the workflow ends by closing the ticket, so "all issues fixed or answered" is a hard gate. Never merge past an unaddressed review comment. Every push (fixes or a rebase) stales all earlier reads of CI and comments - "return to step 1" means re-reading both, not resuming from memory.
 
 ## Parameters
 
 | Param | Required | Notes |
 |-------|----------|-------|
-| `ticket_id` | no | Ticket ID; presence selects the mode (see Mode selection) |
+| `ticket_id` | no | Ticket ID; presence selects remote mode, subject to the agent's state |
 
 ## Process
 
-### Mode selection
+### Step 1: Dispatch
 
-| Situation | Mode |
-|-----------|------|
-| No `ticket_id` | Local |
-| `ticket_id` given, but the target agent's pane is this session's own `$HERDR_PANE_ID` | Local - don't prompt yourself |
-| `ticket_id` given otherwise | Remote |
+Run by its absolute path under this skill's directory:
+
+```bash
+<skill-dir>/scripts/dispatch.sh [ticket_id]
+```
+
+It decides the mode and, for remote, sends the prompt itself. With a ticket it looks the agent up in Herdr and checks its state: prompting a `working` agent isn't rejected - the text queues and fires the merge when the current turn ends, likely before the MRs exist - so readiness is part of the decision, not a judgement left to you. It prints JSON with `ticket`, `handle`, `mode`, `reason`, `agent`, and `prompt_sent`.
+
+| Exit | `mode` | Do |
+|------|--------|----|
+| 0 | `local` | Local mode |
+| 0 | `remote` | Prompt sent (`prompt_sent` true) - Remote mode |
+| 1 | `stop` | Relay `reason` - it names the action to offer - and, when present, `agent` (name, pane, status). Stop |
+| 2 | - | Usage error (bad option, more than one ticket, `jq` missing); nothing was sent. Fix the invocation, or tell the user if it's the environment |
+| 3 | `remote` | Nothing was sent: the agent became blocked before the prompt landed. Read its pane and tell the user the merge hasn't started and what the dialog is asking; don't re-run |
+| 4 | `remote` | Nothing was sent: the prompt failed. Read its pane and tell the user the merge hasn't started, with the error; don't re-run |
 
 ### Local mode
 
@@ -48,21 +59,10 @@ Stop and ask the user if anything needs clarification.
 
 ### Remote mode
 
-1. Preflight: `test "${HERDR_ENV:-}" = 1`. Outside Herdr, stop - nothing can reach another session.
-2. Slugify the ticket ID the way spawn-agent derives handles (lowercase, non-alphanumerics to `-`) and check `herdr agent list` for it. No live agent with that name means the implement agent has exited: stop, report it, and offer to run local mode from the ticket's repo instead - don't spawn a fresh agent that knows nothing about the MRs.
-3. Check readiness: `herdr agent get "$handle"`. `working` is not rejected by `agent prompt` - the text queues and would fire the merge workflow the moment the current turn ends, likely before the MRs exist - so report the state and ask the user before sending. `blocked` means it's stopped at an approval or question dialog - read its pane and tell the user instead of sending anything.
-4. Trigger the skill:
-
-   ```bash
-   herdr agent prompt "$handle" "/merge-ticket"
-   ```
-
-   The remote session receives no ticket_id, so it selects local mode - no recursion. No `--wait`: CI and review loops run long, and `--wait` would block this session until the ticket is done.
-5. Verify delivery: `herdr agent read "$handle" --source recent-unwrapped --lines 30` should show the skill invocation. If the text landed as plain prose instead, send "Merge the open MR(s) using the merge-ticket skill".
-6. Report the handle and that the agent will merge, clean up, and move the ticket to its done status.
+Only after exit 0 with `prompt_sent` true - exits 3 and 4 also say `remote` but nothing reached the agent. Report the handle and that the agent will merge, clean up, and move the ticket to its done status.
 
 ## Success Criteria
 
 - Local: MR(s) merged with CI green and every review comment fixed or answered, worktree removed, ticket in its done status.
-- Remote: the skill was triggered in the correct, ready agent without blocking this session, and no new agents or tabs were created.
+- Remote: the prompt reached the correct, ready agent without blocking this session, and no new agents or tabs were created.
 - Ambiguity - unknown MR(s) locally, missing or busy agent remotely - stopped the skill with a question instead of a guess.
