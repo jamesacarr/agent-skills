@@ -1,108 +1,79 @@
 ---
 name: spawn-agent
-description: Starts a named agent session (Claude Code, Codex, pi, or any Herdr-supported kind) in a new Herdr tab in the current workspace, optionally on a specific model. Use when the user asks to spawn an agent, open a new tab running Claude, Codex, or pi, or hand a side task to a fresh session (e.g. "/spawn-agent ABC-123 review", "spin up a codex agent for the docs"). Requires HERDR_ENV=1.
-compatibility: Requires running inside Herdr (HERDR_ENV=1) with the herdr CLI available
+description: Starts a named agent session (Claude Code, Codex, pi, or any Herdr-supported kind) in a new Herdr tab in the current workspace, optionally on a specific model. Use when the user asks to spawn an agent, open a new tab running Claude, Codex, or pi, or hand a side task to a fresh session (e.g. "/spawn-agent ABC-123", "spin up a codex agent for the docs"). Do NOT use to implement a ticket (use implement-ticket). Requires HERDR_ENV=1.
+compatibility: Requires running inside Herdr (HERDR_ENV=1) with the herdr and jq CLIs available
 ---
 
 # spawn-agent
 
 ## Essential Principles
 
-- Herdr owns the tab, the agent owns the session. `herdr tab create` yields a shell pane, `herdr agent start` turns that pane into an agent session, and everything after `--` goes to the agent's own CLI.
-- One tab per invocation. When a step fails, repair the tab you already created instead of making another - orphan tabs are invisible cleanup for the user.
-- The new session inherits only cwd. Its context is empty, so any task detail must be sent as a prompt.
+- The script does the Herdr work; you resolve the inputs. `scripts/spawn-agent.sh` creates the tab, starts the agent in it, retries busy panes, suffixes colliding handles, closes the tab if the agent never starts, and sends at most one prompt.
+- The parameters come from the user's words, not from what the words resemble. An inferred value looks helpful and produces a session the user didn't ask for.
+- The new session inherits only cwd. Its context is empty, so a task the user stated can only reach it as a prompt. When they stated none, an empty session waiting for their input is the intended result, not a gap to fill.
 
 ## Parameters
 
-| Param | Required | Default |
-|-------|----------|---------|
-| `name` | yes | - |
-| `kind` | no | the agent running this skill |
-| `model` | no | omitted, so the new session starts on that agent's default model |
-| `focus` | no | conditional - resolved below |
+| Param | Flag | Required | Default |
+|-------|------|----------|---------|
+| `name` | `--name` | yes | - |
+| `kind` | `--kind` | yes | the harness running this skill: Claude Code → `claude`, Codex → `codex`, pi → `pi` |
+| `model` | `--model` | no | omitted, so the session starts on that agent's default |
+| `task` | `--task` | no | none |
+| `focus` | `--focus` / `--no-focus` | no | derived from `task` by the script |
 
-`kind` maps directly to herdr's `--kind` flag and names which agent CLI to launch (`claude`, `codex`, `pi`, ...). The default needs no detection command: you know which harness is executing this skill, so resolve it yourself (Claude Code → `claude`, Codex → `codex`, pi → `pi`). Pass an unfamiliar kind through untouched - `herdr agent start` validates against its own supported list, so don't maintain one here.
+`name` is free text (spaces and capitals are fine). It becomes the tab label, the session display name, and, slugified, the Herdr handle. Use it exactly as given. If it's missing and can't be inferred from the request, ask rather than inventing one.
 
-When `focus` isn't given, key it to the same decision Step 4 makes about sending a prompt: an initial task will be sent → `no`, because the user delegated and stays put; no initial task → `yes`, because the empty session waits for their input, so land them there. A user asking to switch context ("open a tab", "take me there") is an explicit `yes`, and an explicit `focus` from the user or a calling skill always wins.
+`kind` needs no detection command: you know which harness is executing this skill. Pass an unfamiliar kind through untouched - Herdr validates it against its own list.
 
-`name` is free text (spaces and capitals are fine). It is used three ways: the tab label, the session display name for kinds that support one, and a slugified Herdr agent handle. `model` is passed verbatim to the agent's model flag - never guess a value the user didn't give, and never translate a model between agents (`sonnet` means something to `claude` and nothing to `codex`). For reference: `claude` takes an alias (`opus`, `sonnet`, `fable`, `haiku`) or a full ID (`claude-opus-5`); `pi` takes a pattern or ID (`provider/id`, fuzzy like `*sonnet*`, optional `:<thinking>` suffix); `codex` takes a model ID.
+`model` is passed verbatim to the agent's model flag - never guess a value the user didn't give, and never translate a model between agents (`sonnet` means something to `claude` and nothing to `codex`). For reference: `claude` takes an alias (`opus`, `sonnet`, `fable`, `haiku`) or a full ID (`claude-opus-5`); `pi` takes a pattern or ID (`provider/id`, fuzzy like `*sonnet*`, optional `:<thinking>` suffix); `codex` takes a model ID. For any other kind the script rejects `--model` because it can't know that CLI's flag; check `<cli> --help` and pass the flag after `--`.
 
-If `name` is missing and can't be inferred from the request, ask for it rather than inventing one.
+`task` exists only when the user stated a task in words ("spawn an agent to review the auth MR"). Leave it unset otherwise. `name` never implies a task: a name that looks like a ticket ID (`ABC-123`) is a label the user chose, not a request to look the ticket up, rename the session after its summary, or start work on it. Calling skills that send their own dispatch (implement-ticket does) also leave `task` unset, so the new session is prompted exactly once.
 
-## Per-Agent CLI Flags
-
-Each agent CLI accepts different flags after `--`:
-
-| Kind | Name flag | Model flag |
-|------|-----------|------------|
-| `claude` | `--name` | `--model` |
-| `pi` | `--name` | `--model` |
-| `codex` | none - the tab label carries the name | `--model` |
-| others | none | verify with `<cli> --help` before passing one |
-
-Never pass a flag this table doesn't list for the kind without checking the CLI's help first: an unknown flag makes the agent exit immediately, which surfaces confusingly as a Herdr `timeout` error.
+`focus` follows `task` unless a flag is passed: a task set means the user delegated and stays put (no focus); no task means the empty session waits for their input, so land them there (focus). Pass a flag only for an explicit choice: "open a tab" or "take me there" is `--focus`, and a calling skill's `focus` always wins.
 
 ## Process
 
-### Step 1: Preflight
+### Step 1: Run the Script
+
+Run it by its absolute path under this skill's directory, with your cwd in the repo the new session should work in - the script passes its cwd, not its own location, to the tab:
 
 ```bash
-test "${HERDR_ENV:-}" = 1
+<skill-dir>/scripts/spawn-agent.sh --name "<name>" --kind <kind> [--model <model>] [--task "<task>"] [--focus|--no-focus]
 ```
 
-If this fails, say you're not running inside Herdr and stop - none of the commands below can reach a session.
+On success it prints one JSON object: `handle`, `tab_id`, `pane_id`, `label`, `kind`, `model`, `status`, `task_sent`. Diagnostics, including the pane's own output on failure, go to stderr.
 
-### Step 2: Derive the Agent Handle
+### Step 2: Act on the Exit Code
 
-Herdr handles must match `[a-z][a-z0-9_-]{0,31}` and be unique among live agents, so slugify `name` for the handle and keep the raw text for the label:
+| Exit | State | Do |
+|------|-------|----|
+| 0 | Session ready; task sent if given | Report |
+| 1 | Herdr failed; the tab is already closed | Relay the stderr - it includes the shell's own error - and stop. Don't re-run unchanged |
+| 2 | Usage or preflight failure; nothing created | Not inside Herdr → say so and stop. Otherwise fix the invocation |
+| 3 | Session up but blocked at a startup dialog (folder trust, MCP consent); task not sent | Read the pane and ask the user before answering it - those are consent decisions. Don't re-run; the tab exists |
+| 4 | Session up; prompt failed | Read the pane and report. Don't re-run |
 
-```bash
-handle=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g; s/^([^a-z])/a-\1/' | cut -c1-32 | sed -E 's/-+$//')
-herdr agent list | jq -r '.result.agents[]?.name // empty'
-```
-
-On a collision, suffix the handle (`-2`, `-3`). Names from exited agents are already released and safe to reuse.
-
-### Step 3: Create the Tab and Start the Agent
-
-```bash
-pane=$(herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$PWD" --label "$name" --focus | jq -r '.result.root_pane.pane_id')
-
-args=()
-case "$kind" in claude|pi) args+=(--name "$name");; esac
-[ -n "$model" ] && args+=(--model "$model")
-
-for attempt in 1 2 3 4 5 6 7 8 9 10; do
-  out=$(herdr agent start "$handle" --kind "$kind" --pane "$pane" --timeout 120000 -- "${args[@]}" 2>&1)
-  case "$out" in *agent_pane_busy*) sleep 1; continue;; esac
-  break
-done
-printf '%s\n' "$out"
-```
-
-Why each part is shaped that way:
-
-- `--cwd "$PWD"` - a tab created without it starts wherever the Herdr server was launched, not in the repo being worked on.
-- `--focus` - include only when `focus` resolves to `yes` (see Parameters); otherwise omit the flag - everything else is unchanged.
-- The retry loop - a brand-new pane usually reports `agent_pane_busy` for the first second or two while the shell finishes its rc files. That error means nothing was launched, so retrying is safe. Any other error breaks the loop immediately.
-- The `args` array - it keeps each flag and value a separate argv entry. Do **not** replace it with an inline `${model:+--model "$model"}` expansion: that passes `--model sonnet` as a single argv entry, hitting the unknown-flag failure described in Per-Agent CLI Flags. The `case` keys off that table.
-- `--timeout 120000` - the default 30s can be tight while the new session loads MCP servers, extensions, and plugins.
-
-On failure, read the pane before doing anything else: `herdr pane read "$pane"` (positional, no `--pane`) shows the shell's own error. If `$pane` is empty, `herdr tab create` itself failed - inspect its output and stop rather than calling `herdr agent start` with an empty pane. Close the tab with `herdr tab close <tab_id>` (also positional) only if you're abandoning the attempt.
-
-### Step 4: Report Back
+### Step 3: Report Back
 
 Give the user the tab label, the handle, the kind (when it isn't the default), the model if one was requested, and how to drive it:
 
 ```bash
-herdr agent prompt <handle> "<task>" --wait
+herdr agent prompt <handle> "<text>"
 ```
 
-Send a prompt yourself only if the user asked the new session to start on something specific.
+Leave off `--wait`: it blocks the caller until the agent finishes its turn, which undoes the delegation. The user can read the pane or ask you to check on it later.
+
+## Anti-Patterns
+
+- **Reading a task into a ticket-shaped name.** `/spawn-agent ABC-123` creates a session named `ABC-123` and stops. Looking the ticket up, drafting a brief, or dispatching `/implement-ticket` imports another skill's behaviour the user didn't ask for. When they want the ticket worked they say so, and implement-ticket calls this skill itself.
+- **Improving the name.** A user-supplied `name` is used as given, IDs and capitals included. Substituting a "more descriptive" label breaks the handle other skills derive from the ticket ID (merge-ticket looks the agent up by it).
+- **Prompting to fill the silence.** With `task` unset, an idle session is the successful outcome. Don't send a greeting, a summary of cwd, or a guessed task.
+- **Running the herdr commands by hand.** Bypassing the script drops every quirk it encodes, and the failures come back as confusing timeouts and orphan tabs. If the script can't do what's needed, that's a change to the script.
 
 ## Success Criteria
 
-- A new tab in the current workspace (focused only when `focus` resolved to `yes`), labelled `name`, cwd matching the invoking session.
-- `herdr agent list` shows the handle with the resolved kind; for kinds with a name flag (`claude`, `pi`) the session's terminal title reads `name`.
+- The script ran once. Exactly one tab exists in the current workspace, labelled `name`, cwd matching the invoking session, focused only when `focus` resolved to yes.
+- `herdr agent list` shows the handle with the resolved kind; for `claude` and `pi` the terminal title reads `name`.
 - The session runs the requested model, or that agent's default when `model` was omitted.
-- Exactly one tab created - no orphans left by a retry.
+- With `task` set, the session received it once; with `task` unset, it received no prompt.

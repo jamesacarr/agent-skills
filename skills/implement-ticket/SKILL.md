@@ -67,7 +67,7 @@ Stop and ask the user if anything needs clarification.
 
 ### Spawn and dispatch
 
-1. Invoke the spawn-agent skill with `name: $TICKET`, `model` if provided, and `focus: no` - the user stays in this session while the ticket runs in the background. It owns tab creation, handle rules, and the busy-pane retry loop - don't reimplement any of it.
+1. Invoke the spawn-agent skill with `name: $TICKET`, `model` if provided, and `focus: no` - the user stays in this session while the ticket runs in the background. Leave its `task` unset: step 2 owns the dispatch, and passing it too would prompt the session twice. spawn-agent owns tab creation, handle rules, and the busy-pane retry loop - don't reimplement any of it.
 2. Dispatch the skill to the new session:
 
    ```bash
