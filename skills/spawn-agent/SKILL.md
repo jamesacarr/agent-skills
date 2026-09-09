@@ -9,7 +9,7 @@ compatibility: Requires running inside Herdr (HERDR_ENV=1) with the herdr and jq
 ## Essential Principles
 
 - The script does the Herdr work; you resolve the inputs. `scripts/spawn-agent.sh` creates the tab, starts the agent in it, retries busy panes, suffixes colliding handles, closes the tab if the agent never starts, and sends at most one prompt.
-- The parameters come from the user's words, not from what the words resemble. An inferred value looks helpful and produces a session the user didn't ask for.
+- The parameters come from the user's words or a calling skill's explicit values, never from what a value resembles. An inferred value looks helpful and produces a session nobody asked for.
 - The new session inherits only cwd. Its context is empty, so a task the user stated can only reach it as a prompt. When they stated none, an empty session waiting for their input is the intended result, not a gap to fill.
 
 ## Parameters
@@ -28,7 +28,7 @@ compatibility: Requires running inside Herdr (HERDR_ENV=1) with the herdr and jq
 
 `model` is passed verbatim to the agent's model flag - never guess a value the user didn't give, and never translate a model between agents (`sonnet` means something to `claude` and nothing to `codex`). For reference: `claude` takes an alias (`opus`, `sonnet`, `fable`, `haiku`) or a full ID (`claude-opus-5`); `pi` takes a pattern or ID (`provider/id`, fuzzy like `*sonnet*`, optional `:<thinking>` suffix); `codex` takes a model ID. For any other kind the script rejects `--model` because it can't know that CLI's flag; check `<cli> --help` and pass the flag after `--`.
 
-`task` exists only when the user stated a task in words ("spawn an agent to review the auth MR"). Leave it unset otherwise. `name` never implies a task: a name that looks like a ticket ID (`ABC-123`) is a label the user chose, not a request to look the ticket up, rename the session after its summary, or start work on it. Calling skills that send their own dispatch (implement-ticket does) also leave `task` unset, so the new session is prompted exactly once.
+`task` is set when the user stated a task in words ("spawn an agent to review the auth MR") or a calling skill supplies one. Leave it unset otherwise. `name` never implies a task: a name that looks like a ticket ID (`ABC-123`) is a label the user chose, not a request to look the ticket up, rename the session after its summary, or start work on it.
 
 `focus` follows `task` unless a flag is passed: a task set means the user delegated and stays put (no focus); no task means the empty session waits for their input, so land them there (focus). Pass a flag only for an explicit choice: "open a tab" or "take me there" is `--focus`, and a calling skill's `focus` always wins.
 
@@ -66,7 +66,7 @@ Leave off `--wait`: it blocks the caller until the agent finishes its turn, whic
 
 ## Anti-Patterns
 
-- **Reading a task into a ticket-shaped name.** `/spawn-agent ABC-123` creates a session named `ABC-123` and stops. Looking the ticket up, drafting a brief, or dispatching `/implement-ticket` imports another skill's behaviour the user didn't ask for. When they want the ticket worked they say so, and implement-ticket calls this skill itself.
+- **Reading a task into a ticket-shaped name.** `/spawn-agent ABC-123` creates a session named `ABC-123` and stops. Looking the ticket up, drafting a brief, or inventing an implement prompt imports another skill's behaviour the user didn't ask for. When they want the ticket worked they say so, and implement-ticket calls this skill with the task spelled out - a supplied task is fine, an inferred one is not.
 - **Improving the name.** A user-supplied `name` is used as given, IDs and capitals included. Substituting a "more descriptive" label breaks the handle other skills derive from the ticket ID (merge-ticket looks the agent up by it).
 - **Prompting to fill the silence.** With `task` unset, an idle session is the successful outcome. Don't send a greeting, a summary of cwd, or a guessed task.
 - **Running the herdr commands by hand.** Bypassing the script drops every quirk it encodes, and the failures come back as confusing timeouts and orphan tabs. If the script can't do what's needed, that's a change to the script.

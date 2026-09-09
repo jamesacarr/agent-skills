@@ -7,48 +7,44 @@ description: Implements a ticket end to end in the current session, or by spawni
 
 ## Essential Principles
 
-- Both modes run this same skill. Local mode executes the workflow in this session; spawn mode dispatches `/implement-ticket <TICKET>` to the new session, which recognises itself as the ticket's agent and self-selects local mode - so the guardrails reach whichever session executes.
-- One agent per ticket. A live agent already named after the ticket almost certainly means the ticket is being worked - re-triggering would re-assign, re-plan, and collide with its worktree, so stop and ask. This rule is also the recursion backstop: if self-detection ever failed, the dispatched session halts here instead of prompting itself.
+- Both modes run this same skill. Local mode executes the workflow in this session; spawn mode hands the new session a prompt naming this skill, and that session recognises itself as the ticket's agent and self-selects local mode - so the guardrails reach whichever session executes.
+- One agent per ticket. A live agent already named after the ticket almost certainly means the ticket is being worked - re-triggering would re-assign, re-plan, and collide with its worktree, so the mode script stops instead. This is also the recursion backstop: if self-detection ever failed, the dispatched session halts here instead of prompting itself.
 - The workflow must run from the ticket's repo - the worktree is created relative to it, and a spawned session inherits only cwd.
 
 ## Parameters
 
 | Param | Required | Notes |
 |-------|----------|-------|
-| `ticket_id` | yes | Ticket ID, normalised to uppercase. Becomes the agent name and tab label in spawn mode |
+| `ticket_id` | yes | Ticket ID; the script uppercases it. Becomes the agent name and tab label in spawn mode |
 | `model` | no | Spawn mode only; passed to spawn-agent verbatim - never guess a value the user didn't give. Given alongside `--here`, say it can't apply to an already-running session and continue locally |
-| `--here` | no | Forces local mode (see Mode selection) |
+| `--here` | no | Forces local mode |
 
 Arguments are positional - `ticket_id` first, then `model` - with `--here` allowed anywhere: `/implement-ticket ABC-123 sonnet`, `/implement-ticket ABC-123 --here`.
 
 ## Process
 
-### Preflight (both modes)
+### Step 1: Select the Mode
+
+Run by its absolute path under this skill's directory, from the ticket's repo:
 
 ```bash
-git rev-parse --show-toplevel
-TICKET=$(printf '%s' "$ticket_id" | tr '[:lower:]' '[:upper:]')
+<skill-dir>/scripts/select-mode.sh "$ticket_id" [--here]
 ```
 
-Then verify the ticket exists with the tracker's CLI, key-only - for Jira: `jira issue list -q "key = $TICKET" --plain --columns key --no-headers`.
+Its only inputs are the flag, the environment, and Herdr's agent list - ticket size or content is never one, because the user chose where the work runs by how they invoked the skill. It prints JSON with `ticket` (uppercased - `$TICKET` below), `repo`, `mode`, `reason`, and `agent`.
 
-Not in a repo → stop and ask which repo to run from. The existence check prints only the key when the ticket exists; empty output or an error means a typo or dead ticket - show it and stop.
+| Exit | `mode` | Do |
+|------|--------|----|
+| 0 | `local` | Continue to Step 2, then Local mode |
+| 0 | `spawn` | Continue to Step 2, then Spawn mode |
+| 1 | `stop` | Relay `reason` and, when present, `agent` (name, pane, status) - the user decides whether to prompt that agent, run `--here` from its tab, or restart. Don't proceed |
+| 2 | - | Usage error (bad option, more than one ticket, `jq` missing); nothing was created. Fix the invocation, or tell the user if it's the environment |
 
-The check is deliberately key-only: never view the ticket before mode selection. Reading the description invites a scope judgement ("small enough to do here") that overrides the mode table. The executing session reads the ticket; this session only proves it exists.
+### Step 2: Verify the Ticket Exists
 
-### Mode selection
+Key-only, with the tracker's CLI - for Jira: `jira issue list -q "key = $TICKET" --plain --columns key --no-headers`. The check prints only the key when the ticket exists; empty output or an error means a typo or dead ticket - show it and stop.
 
-First match wins. The table's only inputs are the flag, the environment, and the agent list - ticket size or perceived complexity is NEVER an input, because the user chose where the work runs by how they invoked the skill:
-
-| Situation | Mode |
-|-----------|------|
-| `--here` given | Local |
-| `HERDR_ENV` is not `1` | Stop - can't spawn or dispatch outside Herdr; suggest `--here` to run in this session |
-| This session is the ticket's agent (slugified `$TICKET` in `herdr agent list` with a pane matching `$HERDR_PANE_ID`) | Local |
-| A live agent for the ticket exists elsewhere | Stop and ask - report the agent and its `herdr agent get` state; the user decides whether to prompt it, run `--here` from its tab, or restart |
-| Otherwise | Spawn and dispatch |
-
-Slugify the way spawn-agent derives handles: lowercase, non-alphanumerics to `-`.
+Key-only because in spawn mode this session isn't the one doing the work: the executing session reads the ticket, this one only proves it exists.
 
 ### Local mode
 
@@ -65,21 +61,20 @@ Execute in this session, loading the tracker's skill (e.g. use-jira) for ticket 
 
 Stop and ask the user if anything needs clarification.
 
-### Spawn and dispatch
+### Spawn mode
 
-1. Invoke the spawn-agent skill with `name: $TICKET`, `model` if provided, and `focus: no` - the user stays in this session while the ticket runs in the background. Leave its `task` unset: step 2 owns the dispatch, and passing it too would prompt the session twice. spawn-agent owns tab creation, handle rules, and the busy-pane retry loop - don't reimplement any of it.
-2. Dispatch the skill to the new session:
+Invoke the spawn-agent skill with `name: $TICKET`, `model` if provided, and this exact `task`:
 
-   ```bash
-   herdr agent prompt "$handle" "/implement-ticket $TICKET"
-   ```
+```text
+Implement ticket $TICKET using the implement-ticket skill.
+```
 
-   The new session is the ticket's agent, so it self-selects local mode. No `--wait`: the workflow runs for a long time and `--wait` would block this session until the ticket is done. An `agent_blocked` error means the fresh session stopped at a startup dialog (folder trust, MCP consent) - read its pane and resolve or report rather than retrying.
-3. Verify delivery: `herdr agent read "$handle" --source recent-unwrapped --lines 30` should show the skill invocation. If the text landed as plain prose instead, send "Implement ticket $TICKET using the implement-ticket skill".
-4. Report the tab label, handle, and model (when one was requested), and that the agent will summarise its changes and stop for review once the MR(s) are open.
+Prose, not a slash command: the new session's harness may differ from this one and each has its own invocation syntax, so the sentence names the skill and lets the description trigger fire. The new session is the ticket's agent, so its own Step 1 selects local mode. spawn-agent leaves the tab unfocused when a task is set, and its exit codes cover startup dialogs and failed prompts - act on them as that skill says.
+
+Report the tab label, handle, and model (when one was requested), and that the agent will summarise its changes and stop for review once the MR(s) are open.
 
 ## Success Criteria
 
 - Local: ticket assigned and In Progress, worktree created, plan produced and executed, MR(s) open, summary delivered - then stopped for review, nothing merged.
-- Spawn: one new background (unfocused) tab labelled with the ticket ID, cwd matching the invoking repo, the skill triggered there without blocking this session - no orphans, no duplicate agent for a ticket already in flight.
+- Spawn: one new background (unfocused) tab labelled with the ticket ID, cwd matching the invoking repo, the task delivered there without blocking this session - no orphans, no duplicate agent for a ticket already in flight.
 - Invalid input (no repo, bad ticket ID, outside Herdr without `--here`) stopped the skill before any tab was created.
