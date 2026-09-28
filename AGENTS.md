@@ -27,6 +27,8 @@ skills/obsidian-wiki/scripts/validate-examples.py
 
 They are lightweight: they check local structural consistency (required snippets present, fenced blocks balanced, referenced files exist), not behavioural correctness.
 
+The other `scripts/` files are runtime helpers the skill invokes, not validators: `debug-code/scripts/find-polluter.sh` and the Herdr dispatch scripts in `spawn-agent`, `implement-ticket`, and `merge-ticket`. Their SKILL.md documents each script's flags, JSON output, and exit codes. Change a script's contract and update that table in the same edit.
+
 ## Authoring conventions
 
 The `author-skill` skill is the source of truth for how skills here are written; read it (and its `references/`) before creating or substantially editing a skill. Key rules:
@@ -39,11 +41,12 @@ The `author-skill` skill is the source of truth for how skills here are written;
 
 ## Two skill shapes
 
-- **Simple skill:** a single `SKILL.md` (e.g. `test`, `test-driven-development`, `use-defuddle`).
-- **Router pattern:** `SKILL.md` routes via an `## Intake` menu + `## Routing` table to `workflows/` files, with shared detail in `references/` (e.g. `author-skill`, `debug-code`, `obsidian-wiki`, `upgrade-dependencies`). Use when there are multiple distinct workflows or the skill exceeds ~200 lines.
+- **Simple skill:** a single `SKILL.md` (e.g. `test-driven-development`, `use-defuddle`, `use-gh`).
+- **Router pattern:** `SKILL.md` routes via an `## Intake` menu + `## Routing` table to `workflows/` files, with shared detail in `references/` (e.g. `author-skill`, `obsidian-wiki`, `upgrade-dependencies`, `write-tickets`). Use when there are multiple distinct workflows or the skill exceeds ~200 lines.
 
 ## Portability notes
 
-- Tool skills name their required CLI explicitly (`gh`, `glab`, `jira`, `obsidian`, `defuddle`) and gate on availability (`command -v <cli>`).
+- Tool skills name their required CLI explicitly (`gh`, `glab`, `jira`, `gcx`, `obsidian`, `defuddle`) and gate on availability (`command -v <cli>`).
+- `spawn-agent`, `implement-ticket`, and `merge-ticket` depend on Herdr (a terminal multiplexer for coding agents). `spawn-agent` requires it outright; the ticket skills use it for spawn/remote modes and fall back to the current session otherwise. The gate is `HERDR_ENV=1`, checked in each skill's script alongside the `herdr` and `jq` CLIs.
 - Harness-specific tools are described generically first, then mapped (e.g. web fetch/extract described abstractly, then `web_extract` for Pi / `WebFetch` for Claude Code).
 - Some skills encode personal conventions (notably `obsidian-wiki`, which assumes a vault named `wiki`). Fork before changing environment-specific assumptions.
