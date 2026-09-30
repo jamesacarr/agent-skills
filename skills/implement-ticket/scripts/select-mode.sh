@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# Decide where implement-ticket runs, from the flag, the environment, and the
-# Herdr agent list only. Ticket size or content is never an input: the user
-# chose where the work runs by how they invoked the skill.
+# Decide where implement-ticket runs, from the environment and the Herdr agent
+# list only. Ticket size or content is never an input, and there is no flag:
+# outside Herdr the only place the work can run is this session, and inside it
+# the only session that should run locally is the ticket's own agent.
 #
 # Usage:
-#   select-mode.sh TICKET_ID [--here]
+#   select-mode.sh TICKET_ID
 #
 # Prints one JSON object on stdout:
 #   ticket  - the ID, uppercased
 #   repo    - git top-level of the cwd
+#   herdr   - true when this session runs inside Herdr (HERDR_ENV=1)
 #   mode    - "local" | "spawn" | "stop"
 #   reason  - why, when mode is "stop"
 #   agent   - the ticket's live agent {name, pane_id, tab_id, agent_status, cwd}, or null
@@ -20,11 +22,10 @@
 
 set -eu
 
-ticket='' here='no'
+ticket=''
 for arg in "$@"; do
   case "$arg" in
-    --here) here='yes';;
-    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2;;
+    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2;;
     -*) printf 'select-mode: unknown option: %s\n' "$arg" >&2; exit 2;;
     *) [ -z "$ticket" ] || { printf 'select-mode: one ticket id only\n' >&2; exit 2; }; ticket="$arg";;
   esac
@@ -33,11 +34,12 @@ done
 command -v jq >/dev/null || { printf 'select-mode: jq not found\n' >&2; exit 2; }
 
 TICKET=$(printf '%s' "$ticket" | tr '[:lower:]' '[:upper:]')
+herdr=false; [ "${HERDR_ENV:-}" != 1 ] || herdr=true
 agent_json='null'
 
 emit() { # mode reason
-  jq -n --arg ticket "$TICKET" --arg repo "${repo:-}" --arg mode "$1" --arg reason "$2" --argjson agent "$agent_json" \
-    '{ticket: $ticket, repo: (if $repo == "" then null else $repo end), mode: $mode,
+  jq -n --arg ticket "$TICKET" --arg repo "${repo:-}" --argjson herdr "$herdr" --arg mode "$1" --arg reason "$2" --argjson agent "$agent_json" \
+    '{ticket: $ticket, repo: (if $repo == "" then null else $repo end), herdr: $herdr, mode: $mode,
       reason: (if $reason == "" then null else $reason end), agent: $agent}'
 }
 stop() { emit stop "$1"; exit 1; }
@@ -45,8 +47,8 @@ stop() { emit stop "$1"; exit 1; }
 # The worktree is created relative to the ticket's repo, so cwd must be inside one.
 repo=$(git rev-parse --show-toplevel 2>/dev/null) || stop "not inside a git repo - run from the ticket's repo"
 
-[ "$here" = no ] || { emit local ''; exit 0; }
-[ "${HERDR_ENV:-}" = 1 ] || stop "outside Herdr - can't spawn or dispatch; use --here to run in this session"
+# Outside Herdr nothing can be spawned, so this session is the only place to run.
+[ "$herdr" = true ] || { emit local ''; exit 0; }
 
 # Same slugify as spawn-agent, so the handle matches what spawn mode created.
 handle=$(printf '%s' "$TICKET" | tr '[:upper:]' '[:lower:]' \
@@ -58,7 +60,7 @@ if out=$(herdr agent get "$handle" 2>&1); then
   if [ "$pane" = "${HERDR_PANE_ID:-}" ]; then
     emit local ''; exit 0   # this session is the ticket's agent
   fi
-  stop "a live agent for $TICKET already exists - the ticket is probably being worked; ask the user whether to prompt it, run --here from its tab, or restart"
+  stop "a live agent for $TICKET already exists - the ticket is probably being worked; ask the user whether to prompt it, run the skill from its tab, or restart"
 fi
 case "$out" in
   *agent_not_found*) emit spawn ''; exit 0;;

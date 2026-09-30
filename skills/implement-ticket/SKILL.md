@@ -16,10 +16,9 @@ description: Implements a ticket end to end in the current session, or by spawni
 | Param | Required | Notes |
 |-------|----------|-------|
 | `ticket_id` | yes | Ticket ID; the script uppercases it. Becomes the agent name and tab label in spawn mode |
-| `model` | no | Spawn mode only; passed to spawn-agent verbatim - never guess a value the user didn't give. Given alongside `--here`, say it can't apply to an already-running session and continue locally |
-| `--here` | no | Forces local mode |
+| `model` | no | Spawn mode only; passed to spawn-agent verbatim - never guess a value the user didn't give. When the mode comes back `local`, say it can't apply to an already-running session and continue locally |
 
-Arguments are positional - `ticket_id` first, then `model` - with `--here` allowed anywhere: `/implement-ticket ABC-123 sonnet`, `/implement-ticket ABC-123 --here`.
+Arguments are positional - `ticket_id` first, then `model`: `/implement-ticket ABC-123 sonnet`. There is no flag for choosing the mode; the script decides it from where it runs.
 
 ## Process
 
@@ -28,17 +27,17 @@ Arguments are positional - `ticket_id` first, then `model` - with `--here` allow
 Run by its absolute path under this skill's directory, from the ticket's repo:
 
 ```bash
-<skill-dir>/scripts/select-mode.sh "$ticket_id" [--here]
+<skill-dir>/scripts/select-mode.sh "$ticket_id"
 ```
 
-Its only inputs are the flag, the environment, and Herdr's agent list - ticket size or content is never one, because the user chose where the work runs by how they invoked the skill. It prints JSON with `ticket` (uppercased - `$TICKET` below), `repo`, `mode`, `reason`, and `agent`.
+Its only inputs are the environment and Herdr's agent list - ticket size or content is never one, and it takes no options. Outside Herdr nothing can be spawned, so this session is the only place the work can run and the mode is always `local`. Inside Herdr the mode is `spawn` unless this session is already the ticket's agent. It prints JSON with `ticket` (uppercased - `$TICKET` below), `repo`, `herdr`, `mode`, `reason`, and `agent`.
 
 | Exit | `mode` | Do |
 |------|--------|----|
-| 0 | `local` | Continue to Step 2, then Local mode |
+| 0 | `local` | Continue to Step 2, then Local mode. If `herdr` is false and the user asked to spin up an agent or gave a `model`, tell them spawning isn't possible outside Herdr and the work runs here instead |
 | 0 | `spawn` | Continue to Step 2, then Spawn mode |
-| 1 | `stop` | Relay `reason` and, when present, `agent` (name, pane, status) - the user decides whether to prompt that agent, run `--here` from its tab, or restart. Don't proceed |
-| 2 | - | Usage error (bad option, more than one ticket, `jq` missing); nothing was created. Fix the invocation, or tell the user if it's the environment |
+| 1 | `stop` | Relay `reason` and, when present, `agent` (name, pane, status) - the user decides whether to prompt that agent, run the skill from its tab, or restart. Don't proceed |
+| 2 | - | Usage error (any option, more than one ticket, `jq` missing); nothing was created. Fix the invocation, or tell the user if it's the environment |
 
 ### Step 2: Verify the Ticket Exists
 
@@ -77,4 +76,4 @@ Report the tab label, handle, and model (when one was requested), and that the a
 
 - Local: ticket assigned and In Progress, worktree created, plan produced and executed, MR(s) open, summary delivered - then stopped for review, nothing merged.
 - Spawn: one new background (unfocused) tab labelled with the ticket ID, cwd matching the invoking repo, the task delivered there without blocking this session - no orphans, no duplicate agent for a ticket already in flight.
-- Invalid input (no repo, bad ticket ID, outside Herdr without `--here`) stopped the skill before any tab was created.
+- Invalid input (no repo, bad ticket ID) stopped the skill before any tab was created.
