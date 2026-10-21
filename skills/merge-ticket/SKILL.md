@@ -27,7 +27,7 @@ Run by its absolute path under this skill's directory:
 <skill-dir>/scripts/dispatch.sh [ticket_id]
 ```
 
-It decides the mode and, for remote, sends the prompt itself. With a ticket it looks the agent up in Herdr and checks its state: prompting a `working` agent isn't rejected - the text queues and fires the merge when the current turn ends, likely before the MRs exist - so readiness is part of the decision, not a judgement left to you. It prints JSON with `ticket`, `handle`, `mode`, `reason`, `agent`, and `prompt_sent`.
+It decides the mode and, for remote, sends the prompt itself. With a ticket it looks the agent up in Herdr and checks its state: prompting a `working` agent isn't rejected - the text queues and fires the merge when the current turn ends, likely before the MRs exist - so readiness is part of the decision, not a judgement left to you. Run from a repo, it also checks the agent works in that repo: Herdr names are unique per server, so the same ID in another repo (GitHub issue #42 in two repos) maps to the same agent name, and prompting it would merge the wrong ticket. It prints JSON with `ticket`, `handle`, `mode`, `reason`, `agent`, and `prompt_sent`.
 
 | Exit | `mode` | Do |
 |------|--------|----|

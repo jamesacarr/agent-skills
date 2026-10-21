@@ -44,6 +44,9 @@ emit() { # mode reason
 }
 stop() { emit stop "$1"; exit 1; }
 
+# Git common dir of a path: shared by a repo's checkout and all its worktrees.
+repo_of() { (cd "$1" 2>/dev/null && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || true; }
+
 # The worktree is created relative to the ticket's repo, so cwd must be inside one.
 repo=$(git rev-parse --show-toplevel 2>/dev/null) || stop "not inside a git repo - run from the ticket's repo"
 
@@ -59,6 +62,14 @@ if out=$(herdr agent get "$handle" 2>&1); then
   pane=$(printf '%s' "$agent_json" | jq -r '.pane_id')
   if [ "$pane" = "${HERDR_PANE_ID:-}" ]; then
     emit local ''; exit 0   # this session is the ticket's agent
+  fi
+  # Herdr names are unique per server, not per workspace, so the same ID in
+  # another repo (GitHub issue #42 in two repos) lands on the same handle.
+  # Either way this stops; an unreadable repo falls through to the generic reason.
+  agent_cwd=$(printf '%s' "$agent_json" | jq -r '.cwd // empty')
+  there=$(repo_of "${agent_cwd:-/nonexistent}")
+  if [ -n "$there" ] && [ "$there" != "$(repo_of "$repo")" ]; then
+    stop "the live agent named $handle works in another repo (${agent_cwd:-unknown cwd}) - the same ID there, not this ticket; it holds the name, so this ticket can't get its own agent until that one exits"
   fi
   stop "a live agent for $TICKET already exists - the ticket is probably being worked; ask the user whether to prompt it, run the skill from its tab, or restart"
 fi

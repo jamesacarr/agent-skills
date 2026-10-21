@@ -45,6 +45,9 @@ emit() { # mode reason [prompt_sent]
 }
 stop() { emit stop "$1"; exit 1; }
 
+# Git common dir of a path: shared by a repo's checkout and all its worktrees.
+repo_of() { (cd "$1" 2>/dev/null && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || true; }
+
 [ -n "$TICKET" ] || { emit local ''; exit 0; }
 [ "${HERDR_ENV:-}" = 1 ] || stop "outside Herdr - nothing can reach another session; run without a ticket id from the ticket's repo instead"
 
@@ -63,6 +66,18 @@ pane=$(printf '%s' "$agent_json" | jq -r '.pane_id')
 state=$(printf '%s' "$agent_json" | jq -r '.agent_status // "unknown"')
 
 [ "$pane" != "${HERDR_PANE_ID:-}" ] || { emit local ''; exit 0; }   # don't prompt yourself
+
+# Herdr names are unique per server, not per workspace, so the same ID in another
+# repo (GitHub issue #42 in two repos) lands on the same handle - and prompting
+# that agent would merge the wrong ticket's MRs. Run from a repo, the agent must
+# work in it; an agent whose repo can't be read doesn't count as proof.
+here=$(repo_of "$PWD")
+if [ -n "$here" ]; then
+  agent_cwd=$(printf '%s' "$agent_json" | jq -r '.cwd // empty')
+  there=$(repo_of "${agent_cwd:-/nonexistent}")
+  [ -n "$there" ] || stop "can't tell which repo the agent named $handle works in (cwd ${agent_cwd:-unknown}) - read its pane and ask the user before sending a merge"
+  [ "$there" = "$here" ] || stop "the agent named $handle works in another repo ($agent_cwd) - the same ID there, not this ticket; nothing was sent. Run local mode from this ticket's worktree instead"
+fi
 
 # A prompt to a working agent isn't rejected - it queues and fires the merge the
 # moment the current turn ends, likely before the MRs exist.
