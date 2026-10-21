@@ -40,7 +40,7 @@ It decides the mode and, for remote, sends the prompt itself. With a ticket it l
 
 ### Local mode
 
-Load the forge skill for CI status, comments, and merging (use-glab for GitLab, use-gh for GitHub - "MR" below means either forge's merge/pull request), and the tracker's skill (e.g. use-jira) for the done transition. Poll CI rather than sleeping a fixed interval - durations vary by minutes.
+Load the forge skill for CI status, comments, and merging (use-glab for GitLab, use-gh for GitHub - "MR" below means either forge's merge/pull request), and the tracker's skill (e.g. use-jira, use-gh) for the done transition. Poll CI rather than sleeping a fixed interval - durations vary by minutes.
 
 If there are no open MRs, the reason decides the action: already merged means the loop is done - skip to cleanup; never created means the implementation isn't finished - stop and ask.
 
@@ -53,7 +53,7 @@ For each open MR, in stack order (earliest first):
 5. If fixes were made, push and return to step 1
 6. When all raised issues are fixed or answered, merge the MR and retarget the next MR in the stack. A merge rejected for conflicts means the branch went stale - rebase, push, and return to step 1
 
-Once all MR(s) have been merged: clean up the worktree, then move the ticket to its done status.
+Once all MR(s) have been merged: clean up the worktree, then move the ticket to its done status as the tracker's skill defines it. Where the tracker closes tickets from merge keywords, that's a check rather than a transition: keywords may not fire for an MR that targeted another branch in the stack, so if the ticket is still open, close it with a comment naming the merged MRs. Never close it while any MR in the stack is unmerged.
 
 Stop and ask the user if anything needs clarification.
 

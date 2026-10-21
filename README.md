@@ -69,7 +69,7 @@ A few skills are intentionally personal:
 
 - `obsidian-wiki` assumes an Obsidian vault named `wiki` and conventions that match James Carr's personal knowledge base.
 - `spawn-agent` only works inside Herdr, a terminal multiplexer for coding agents (`HERDR_ENV=1`, with the `herdr` and `jq` CLIs available). `implement-ticket` and `merge-ticket` use Herdr for their spawn and remote modes but fall back to running in the current session outside it.
-- `implement-ticket` and `merge-ticket` assume a ticket tracker CLI (Jira via `jira` by default) and a Git worktree-per-ticket layout.
+- `implement-ticket` and `merge-ticket` assume a ticket tracker CLI (e.g. Jira via `jira`, GitHub issues via `gh`) and a Git worktree-per-ticket layout.
 - Workflow skills such as `debug-code`, `test`, `test-driven-development`, and `plan-ticket` encode strong preferences about engineering process (`plan-ticket` includes a default ~300-production-line MR size cap).
 - CLI skills may assume authenticated local CLIs and non-interactive usage.
 

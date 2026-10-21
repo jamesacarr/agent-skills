@@ -1,6 +1,6 @@
 ---
 name: use-gh
-description: Manages GitHub pull requests, issues, and CI runs using the gh CLI. Use when creating PRs, reviewing, merging, posting comments, checking CI status, or any gh operation.
+description: Manages GitHub pull requests, issues, and CI runs using the gh CLI, including GitHub issues used as tickets. Use when creating PRs, reviewing, merging, posting comments, checking CI status, working a GitHub issue as a ticket, or any gh operation.
 compatibility: Requires gh CLI (brew install gh) and GitHub authentication
 ---
 
@@ -166,6 +166,21 @@ gh api "repos/{owner}/{repo}/pulls/<NUMBER>/reviews" \
 | Create issue | `gh issue create --title "..." --body "..."` |
 | Close issue | `gh issue close <NUMBER>` |
 | Add labels | `gh issue edit <NUMBER> --add-label "bug,priority"` |
+| Assign to me | `gh issue edit <NUMBER> --add-assignee @me` |
+
+### Issues as Tickets
+
+When a ticket workflow (implement, merge) tracks work as a GitHub issue, the ticket ID is `42`, `#42`, or `owner/repo#42` - a bare number means the repo of the current checkout. The workflow names generic ticket operations; this is what each means on GitHub:
+
+| Operation | GitHub mapping |
+|-----------|----------------|
+| Verify | `gh issue view <NUMBER> --json number,state` - an error means a typo or wrong repo, `CLOSED` means there's nothing to do |
+| Start | Assign to me. Issues have no In Progress status - only update a Projects board if the repo uses one, and ask for the project rather than guessing field IDs |
+| Bug check | `--json labels,issueType` - a `bug` label or issue type |
+| Link | `Closes #<NUMBER>` in the body of the PR that completes the issue; `Refs #<NUMBER>` in earlier PRs of a stack, so a partial merge doesn't close it |
+| Done | After the last PR merges, check `--json state`. If still `OPEN`, close it with `gh issue close <NUMBER> --comment "Done in #<PR>, #<PR>"` |
+
+The Done check isn't redundant: closing keywords only fire when the PR merges into the default branch, so a PR in a stack that targeted another branch may never trigger them.
 
 ## JSON Output and Filtering
 
