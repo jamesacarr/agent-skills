@@ -37,6 +37,33 @@ command -v jq >/dev/null || { printf 'dispatch: jq not found\n' >&2; exit 2; }
 TICKET=$(printf '%s' "$ticket" | tr '[:lower:]' '[:upper:]')
 handle='' agent_json='null'
 
+# Agent handle for a ticket ID. Herdr names are unique per server and must match
+# [a-z][a-z0-9_-]{0,31}. A bare issue number (42, #42) is only unique within its
+# repo, so it gets the repo's name as a prefix (owner/repo#42 carries its own),
+# truncated so the number survives - cutting it would give two tickets one handle.
+# Other IDs (ABC-123) get spawn-agent's slugify unchanged. Prints nothing for a
+# bare number outside a repo. Keep identical to the copy in implement-ticket/scripts/select-mode.sh.
+slug() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g'; }
+is_issue_number() { case "${1##*#}" in ''|*[!0-9]*) return 1;; esac; }
+ticket_handle() {
+  local id=$1 num prefix='' common
+  if ! is_issue_number "$id"; then
+    slug "$id" | sed -E 's/^([^a-z])/a-\1/' | cut -c1-32 | sed -E 's/-+$//'; return
+  fi
+  num=${id##*#}
+  case "$id" in *'#'*) prefix=${id%#*};; esac
+  if [ -z "$prefix" ]; then
+    common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 0
+    case "$(basename "$common")" in
+      .git) prefix=$(basename "$(dirname "$common")");;   # checkout or worktree
+      *)    prefix=$(basename "$common" .git);;             # bare repo
+    esac
+  fi
+  prefix=$(slug "$prefix"); case "$prefix" in [a-z]*) ;; *) prefix="a-$prefix";; esac
+  prefix=$(printf '%s' "$prefix" | cut -c1-$((31 - ${#num})) | sed -E 's/-+$//')
+  printf '%s-%s\n' "$prefix" "$num"
+}
+
 emit() { # mode reason [prompt_sent]
   jq -n --arg ticket "$TICKET" --arg handle "$handle" --arg mode "$1" --arg reason "$2" --argjson agent "$agent_json" \
     --argjson sent "${3:-false}" \
@@ -51,9 +78,9 @@ repo_of() { (cd "$1" 2>/dev/null && git rev-parse --path-format=absolute --git-c
 [ -n "$TICKET" ] || { emit local ''; exit 0; }
 [ "${HERDR_ENV:-}" = 1 ] || stop "outside Herdr - nothing can reach another session; run without a ticket id from the ticket's repo instead"
 
-# Same slugify as spawn-agent, so the handle matches what implement-ticket created.
-handle=$(printf '%s' "$TICKET" | tr '[:upper:]' '[:lower:]' \
-  | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g; s/^([^a-z])/a-\1/' | cut -c1-32 | sed -E 's/-+$//')
+# The same derivation as implement-ticket's spawn, so the handle matches its agent.
+handle=$(ticket_handle "$TICKET")
+[ -n "$handle" ] || stop "$TICKET is a bare issue number, which names an agent only together with its repo - run from the ticket's repo"
 
 if ! out=$(herdr agent get "$handle" 2>&1); then
   case "$out" in

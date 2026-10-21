@@ -15,7 +15,7 @@ description: Merges a ticket's open MR/PR(s) once CI is green and every review c
 
 | Param | Required | Notes |
 |-------|----------|-------|
-| `ticket_id` | no | Ticket ID; presence selects remote mode, subject to the agent's state |
+| `ticket_id` | no | Ticket ID; presence selects remote mode, subject to the agent's state. A bare issue number (`42`, `#42`) names its agent only with the repo, so run from the ticket's repo |
 
 ## Process
 
