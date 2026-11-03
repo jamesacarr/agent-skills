@@ -10,6 +10,7 @@ ticket: <KEY-123>
 type: chore
 revision: 1
 panel: <critics run, e.g. pragmatist - or "none" plus why>
+implementation_tier: <full | standard | light - set from the panel per references/model-tiers.md>
 ---
 
 # <KEY-123>: <title>

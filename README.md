@@ -19,11 +19,11 @@ Current skills:
 |-------|---------|
 | `author-skill` | Create, edit, audit, and upgrade Agent Skills that follow the agentskills.io spec |
 | `debug-code` | Disciplined debugging with feedback loops, root-cause investigation, and regression tests |
-| `implement-ticket` | Implement a ticket end to end, in the current session or in a dedicated agent spawned in a Herdr tab |
+| `implement-ticket` | Implement a ticket end to end - plan, implement on the plan's model tier, review the diff against the plan, open MRs - in the current session or in a dedicated agent spawned in a Herdr tab |
 | `merge-ticket` | Merge a ticket's MRs/PRs once CI is green and review comments are addressed, then clean up and close the ticket |
 | `obsidian-markdown` | Obsidian-flavoured Markdown syntax: wikilinks, embeds, callouts, properties, tags |
 | `obsidian-wiki` | Personal Obsidian wiki workflows: ingest, query, and lint |
-| `plan-ticket` | Implementation plans for tickets: persisted plan.md, MR-stack design, risk-sized scoped-critic review loop |
+| `plan-ticket` | Implementation plans for tickets: persisted plan.md, MR-stack design, risk-sized scoped-critic review loop (pragmatist, strategist, architect, detective), implementation model tier |
 | `spawn-agent` | Start a named Claude Code, Codex, or pi session in a new Herdr tab, optionally on a specific model |
 | `test` | Test quality guidance: behavioural assertions, minimal mocking, descriptive naming |
 | `test-driven-development` | RED-GREEN-REFACTOR process discipline |

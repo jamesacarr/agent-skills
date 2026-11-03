@@ -10,13 +10,15 @@ description: Implements a ticket end to end in the current session, or by spawni
 - Both modes run this same skill. Local mode executes the workflow in this session; spawn mode hands the new session a prompt naming this skill, and that session recognises itself as the ticket's agent and self-selects local mode - so the guardrails reach whichever session executes.
 - One agent per ticket. A live agent already named after the ticket almost certainly means the ticket is being worked - re-triggering would re-assign, re-plan, and collide with its worktree, so the mode script stops instead. This is also the recursion backstop: if self-detection ever failed, the dispatched session halts here instead of prompting itself.
 - The workflow must run from the ticket's repo - the worktree is created relative to it, and a spawned session inherits only cwd.
+- The diff is reviewed against the plan before any MR exists, by a context that didn't write it. The plan critics review intent; the shortcuts that become debt are taken at implementation time, and the implementer's own context will defend them.
+- The session's model is the reasoning tier - plan author, critics, and diff reviewers all run on it. Only the implementer runs lower, at the tier the plan records (plan-ticket's references/model-tiers.md).
 
 ## Parameters
 
 | Param | Required | Notes |
 |-------|----------|-------|
 | `ticket_id` | yes | Ticket ID; the script uppercases it. Names the spawned agent and tab, with the repo's name prefixed for a bare issue number (`agent-skills-42`) since Herdr names are unique across all workspaces. In the tracker's own form (`ABC-123`, `#42`) - Step 2 works out which tracker |
-| `model` | no | Spawn mode only; passed to spawn-agent verbatim - never guess a value the user didn't give. When the mode comes back `local`, say it can't apply to an already-running session and continue locally |
+| `model` | no | Spawn mode only; passed to spawn-agent verbatim - never guess a value the user didn't give. It sets the spawned session's model, not the implementer's tier (see Essential Principles). When the mode comes back `local`, say it can't apply to an already-running session and continue locally |
 
 Arguments are positional - `ticket_id` first, then `model`: `/implement-ticket ABC-123 sonnet`. There is no flag for choosing the mode; the script decides it from where it runs.
 
@@ -60,10 +62,12 @@ Execute in this session, loading the tracker's skill (e.g. use-jira, use-gh) for
 2. Create a new worktree for the ticket, including dependency install and any env bootstrapping the project requires. A worktree for the ticket already existing means an earlier run - reuse it if clean, ask if it has uncommitted changes
 3. If this is a bug (by the tracker's issue type or labels), validate the issue described in the ticket before changing anything
 4. Produce an implementation plan using /plan-ticket
-5. Execute the reviewed plan: in Claude Code, create an implementation workflow from it and start it; in a harness without workflow orchestration, work through the plan directly in this session
-6. When complete, commit, push, and open the MR(s) the plan calls for, each linked to the ticket as the tracker's skill describes. Where the tracker closes tickets from merge keywords (GitHub, GitLab, Linear), only the MR that completes the ticket uses a closing reference - earlier ones in a stack reference it without closing, or merging the first would close the ticket early. Never commit the plan file - it's working state for this workflow, not part of the change, and it would land in the MR diff as reviewer noise
-7. If the change is visual, drive the app as a logged-in user and capture screenshots/videos of the changes, attaching them to the MR(s). If a skill covers starting or signing into the app, use it rather than improvising the login
-8. Summarise your changes, then stop and wait for the user's review
+5. For each MR in the plan's stack, in order - a High finding on MR 1 after MR 2 is built forces a rebase, so finish one before starting the next:
+   1. Implement it: in Claude Code, create an implementation workflow from the plan's tasks for this MR and start it, giving each implementation agent the model mapped from the plan's `implementation_tier`; in a harness without workflow orchestration, work through the tasks directly in this session
+   2. Review the diff against the plan per references/diff-review.md and apply its gate - nothing opens with a High outstanding
+   3. Commit, push, and open the MR, linked to the ticket as the tracker's skill describes. Where the tracker closes tickets from merge keywords (GitHub, GitLab, Linear), only the MR that completes the ticket uses a closing reference - earlier ones in a stack reference it without closing, or merging the first would close the ticket early. Never commit the plan file - it's working state for this workflow, not part of the change, and it would land in the MR diff as reviewer noise
+6. If the change is visual, drive the app as a logged-in user and capture screenshots/videos of the changes, attaching them to the MR(s). If a skill covers starting or signing into the app, use it rather than improvising the login
+7. Summarise your changes, then stop and wait for the user's review
 
 Stop and ask the user if anything needs clarification.
 
@@ -83,6 +87,12 @@ Report the tab label, handle, and model (when one was requested), and that the a
 
 ## Success Criteria
 
-- Local: ticket started (assigned, and In Progress where the tracker has it), worktree created, plan produced and executed, MR(s) open, summary delivered - then stopped for review, nothing merged.
+- Local: ticket started (assigned, and In Progress where the tracker has it), worktree created, plan produced and executed, each diff reviewed against the plan with no High open, MR(s) open, summary delivered - then stopped for review, nothing merged.
 - Spawn: one new background (unfocused) tab labelled `$NAME`, cwd matching the invoking repo, the task delivered there without blocking this session - no orphans, no duplicate agent for a ticket already in flight.
 - Invalid input (no repo, bad ticket ID) stopped the skill before any tab was created.
+
+## References
+
+| Reference | Purpose |
+|-----------|---------|
+| references/diff-review.md | The two diff reviewers (conformance, architect), their gate, and how to run them. |

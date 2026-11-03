@@ -36,10 +36,10 @@ Classify the type and size the panel. Reviewer agents cost tokens - the goal is 
 |-------------|-------|-----|
 | One obvious, contained, easily reversed change | No critics | Review costs more than the change; write a minimal plan and record why the panel was skipped |
 | Small and contained: most chores, simple fixes | 1 - pragmatist | Executability is the floor every plan must meet |
-| Multi-file work with real design choices | 2 - pragmatist + strategist (feature/chore) or pragmatist + detective (fix) | Add the lens matching the dominant failure mode: wrong scope vs wrong cause |
-| Hard to reverse, shared abstractions, data model or API changes, multi-component | 3 - all critics | The change is expensive to get wrong; full coverage pays for itself |
+| Multi-file work with real design choices | 2 - pragmatist + the lens for the dominant risk: strategist when it is scope (feature/chore), architect when it is structure (shared code, conventions), detective for a fix | Wrong scope, wrong shape, and wrong cause are different failure modes; one lens each |
+| Hard to reverse, shared abstractions, data model or API changes, multi-component | 4 - all critics | The change is expensive to get wrong; full coverage pays for itself |
 
-State the chosen panel and reasoning to the user before authoring.
+The panel also sets the implementer's model tier - `implementation_tier` in the plan's frontmatter, per references/model-tiers.md. State the panel, the tier, and the reasoning to the user before authoring.
 
 ### Step 2: Research
 
@@ -79,7 +79,7 @@ Run the panel from Step 1 per references/orchestration.md, with critic briefs fr
 | Medium | Apply if the improvement is clear; otherwise record it under Open Questions with the reason |
 | Low | Optional; apply or ignore |
 
-If critic feedback conflicts, ask the user rather than averaging the advice. If High findings persist after 3 re-review rounds, stop and escalate to the user with the surviving findings - persistent Highs usually mean a structural problem needing human judgement, not another rewrite.
+If critic feedback conflicts, ask the user rather than averaging the advice - the strategist (smallest change) and architect (cheapest to live with) are expected to, and that choice is the user's. If High findings persist after 3 re-review rounds, stop and escalate to the user with the surviving findings - persistent Highs usually mean a structural problem needing human judgement, not another rewrite.
 
 ### Step 7: Handoff
 
@@ -88,6 +88,7 @@ Report to the user:
 - Path to `plan.md`
 - The MR stack (number of MRs and one line each)
 - Panel used and rounds run; any deferred Medium findings
+- Implementation tier and why, so they can override it before implementation starts
 - Open questions needing their decision
 
 This is the user's review checkpoint. Implementation starts only after they respond, and each implementation run should target one MR from the stack, reading `plan.md` as its input.
@@ -105,8 +106,9 @@ This is the user's review checkpoint. Implementation starts only after they resp
 
 | Reference | Purpose |
 |-----------|---------|
-| references/critic-scopes.md | Severity definitions and the three critic briefs with scope exclusions. |
+| references/critic-scopes.md | Severity definitions and the four critic briefs with scope exclusions. |
 | references/orchestration.md | How to run the panel: generic pattern, Claude Code Workflow script, subagent fallback. |
+| references/model-tiers.md | Role-to-tier and tier-to-model mapping; how the panel sets `implementation_tier`. |
 
 ## Templates
 
